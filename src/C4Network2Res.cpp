@@ -835,7 +835,9 @@ bool C4Network2Res::SendChunk(uint32_t iChunk, int32_t iToClient)
 	assert(pParent && pParent->getIOClass());
 	if (!szStandalone[0] || iChunk >= Core.getChunkCnt()) return false;
 	// find connection for given client (one of the rare uses of the data connection)
-	C4Network2IOConnection *pConn = pParent->getIOClass()->GetDataConnection(iToClient);
+	C4Network2IOConnection *pConn = Config.Network.PreferTCP ?
+		pParent->getIOClass()->GetMsgConnection(iToClient) :
+		pParent->getIOClass()->GetDataConnection(iToClient);
 	if (!pConn) return false;
 	// save last request time
 	iLastReqTime = time(nullptr);

@@ -181,6 +181,8 @@ public:
 	int32_t LastUpdateTime;
 	int32_t AsyncMaxWait;
 
+	bool PreferTCP;
+
 public:
 	void CompileFunc(StdCompiler *pComp);
 	const char *GetLeagueServerAddress();

@@ -220,6 +220,8 @@ void C4ConfigNetwork::CompileFunc(StdCompiler *pComp)
 
 	pComp->Value(mkNamingAdapt(LeagueAccount,     "LeagueNick",      "",               false, false));
 	pComp->Value(mkNamingAdapt(LeagueAutoLogin,   "LeagueAutoLogin", true,             false, false));
+
+	pComp->Value(mkNamingAdapt(PreferTCP,         "PreferTCP"      , true,             false, false));
 }
 
 void C4ConfigLobby::CompileFunc(StdCompiler *pComp)

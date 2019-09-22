@@ -219,15 +219,31 @@ void C4Network2IO::SetLocalCCore(const C4ClientCore &nCCore)
 
 C4NetIO *C4Network2IO::MsgIO() // by both
 {
-	if (pNetIO_UDP) return pNetIO_UDP;
-	if (pNetIO_TCP) return pNetIO_TCP;
+	if (Config.Network.PreferTCP)
+	{
+		if (pNetIO_TCP) return pNetIO_TCP;
+		if (pNetIO_UDP) return pNetIO_UDP;
+	}
+	else
+	{
+		if (pNetIO_UDP) return pNetIO_UDP;
+		if (pNetIO_TCP) return pNetIO_TCP;
+	}
 	return nullptr;
 }
 
 C4NetIO *C4Network2IO::DataIO() // by both
 {
-	if (pNetIO_TCP) return pNetIO_TCP;
-	if (pNetIO_UDP) return pNetIO_UDP;
+	if (Config.Network.PreferTCP)
+	{
+		if (pNetIO_UDP) return pNetIO_UDP;
+		if (pNetIO_TCP) return pNetIO_TCP;
+	}
+	else
+	{
+		if (pNetIO_TCP) return pNetIO_TCP;
+		if (pNetIO_UDP) return pNetIO_UDP;
+	}
 	return nullptr;
 }
 
