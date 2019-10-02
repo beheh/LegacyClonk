@@ -54,7 +54,7 @@ StdStrBuf C4Value::toString() const
 
 		case C4V_Bool:
 		case C4V_Int:
-			return FormatString("%d", val._getInt());
+			return FormatString("%ld", val._getInt());
 
 		case C4V_C4ID:
 			return StdStrBuf(C4IdText(val._getC4ID()));
@@ -314,7 +314,7 @@ C4V_Type C4Value::GuessType()
 	if (Type != C4V_Any) return Type;
 
 	// C4ID?
-	if (LooksLikeID(Data.Int) && Data.Int >= 10000)
+	if (LooksLikeID(Data.ID) && Data.ID >= 10000)
 		return Type = C4V_C4ID;
 
 #ifdef C4ENGINE
@@ -480,9 +480,11 @@ bool C4Value::FnCnvGuess(C4Value *Val, C4V_Type toType, bool fStrict)
 bool C4Value::FnCnvInt2Id(C4Value *Val, C4V_Type toType, bool fStrict)
 {
 	// inside range?
-	if (!Inside<long>(Val->Data.Int, 0, 9999)) return false;
+	C4Integer i = Val->Data.Int;
+	if (!Inside<decltype(i)>(i, 0, 9999)) return false;
 	// convert
 	Val->Type = C4V_C4ID;
+	Val->Data.ID = static_cast<C4ID>(i);
 	return true;
 }
 
@@ -629,7 +631,7 @@ StdStrBuf C4Value::GetDataString() const
 	case C4V_Bool:
 		return StdStrBuf::MakeRef(Data ? "true" : "false");
 	case C4V_C4ID:
-		return StdStrBuf(C4IdText(Data.Int));
+		return StdStrBuf(C4IdText(Data.ID));
 #ifdef C4ENGINE
 	case C4V_C4Object:
 	{
@@ -717,7 +719,7 @@ void C4Value::DenumeratePointer()
 	// in range?
 	if (Type != C4V_C4ObjectEnum && !Inside(Data.Int, C4EnumPointer1, C4EnumPointer2)) return;
 	// get obj id, search object
-	int iObjID = (Data.Int >= C4EnumPointer1 ? Data.Int - C4EnumPointer1 : Data.Int);
+	C4ID iObjID = (Data.ID >= C4EnumPointer1 ? Data.ID - static_cast<C4ID>(C4EnumPointer1) : Data.ID);
 	C4Object *pObj = Game.Objects.ObjectPointer(iObjID);
 	if (!pObj)
 		pObj = Game.Objects.InactiveObjects.ObjectPointer(iObjID);
@@ -778,12 +780,20 @@ void C4Value::CompileFunc(StdCompiler *pComp)
 	case C4V_Any:
 	case C4V_Int:
 	case C4V_Bool:
-	case C4V_C4ID:
 		// these are 32-bit integers
 		iTmp = Data.Int;
 		pComp->Value(iTmp);
 		Data.Int = iTmp;
 		break;
+
+
+	case C4V_C4ID:
+	{
+		auto tmp = static_cast<uint32_t>(Data.ID);
+		pComp->Value(tmp);
+		Data.ID = tmp;
+		break;
+	}
 
 	// object: save object number instead
 	case C4V_C4Object:
@@ -862,9 +872,10 @@ bool C4Value::Equals(const C4Value &other, C4AulScriptStrict strict) const
 				case C4V_Any:
 					return true;
 				case C4V_Int:
-				case C4V_C4ID:
 				case C4V_C4Object:
 					return Data.Int == other.Data.Int;
+				case C4V_C4ID:
+					return Data.ID == other.Data.ID;
 				case C4V_Bool:
 					return _getBool() == other._getBool();
 				case C4V_String:
@@ -895,11 +906,8 @@ bool C4Value::operator==(const C4Value &Value2) const
 			return Data == Value2.Data;
 		case C4V_Int:
 		case C4V_Bool:
-			return Data == Value2.Data;
 		case C4V_C4ID:
-			if (Inside<long>(Value2.Data.Int, 0, 9999))
-				return Data == Value2.Data;
-			return false;
+			return Data == Value2.Data;
 		default:
 			return false;
 		}
@@ -920,13 +928,10 @@ bool C4Value::operator==(const C4Value &Value2) const
 		{
 		case C4V_Any:
 			assert(!Value2.Data);
-			return Data == Value2.Data;
+			[[fallthrough]];
+		case C4V_Int:
 		case C4V_C4ID:
 			return Data == Value2.Data;
-		case C4V_Int:
-			if (Inside<long>(Value2.Data.Int, 0, 9999))
-				return Data == Value2.Data;
-			return false;
 		default:
 			return false;
 		}
@@ -1003,7 +1008,7 @@ std::size_t std::hash<C4Value>::operator()(C4Value value) const
 	if (ref.GetType() == C4V_C4ObjectEnum)
 	{
 		hash = std::hash<C4V_Type>{}(C4V_C4Object);
-		hashCombine(hash, std::hash<int32_t>{}(ref._getInt()));
+		hashCombine(hash, std::hash<C4Integer>{}(ref._getInt()));
 		return hash;
 	}
 
@@ -1013,7 +1018,7 @@ std::size_t std::hash<C4Value>::operator()(C4Value value) const
 			break;
 
 		case C4V_Int: case C4V_C4ID:
-			hashCombine(hash, std::hash<int32_t>{}(ref._getInt()));
+			hashCombine(hash, std::hash<C4Integer>{}(ref._getInt()));
 			break;
 
 		case C4V_Bool:

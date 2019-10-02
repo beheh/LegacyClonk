@@ -133,9 +133,9 @@ C4FindObject *C4FindObject::CreateByValue(const C4Value &DataVal, C4SortObject *
 
 	case C4FO_ActionTarget:
 	{
-		int index = 0;
+		int32_t index = 0;
 		if (Data.GetSize() >= 3)
-			index = BoundBy(Data[2].getInt(), 0, 1);
+			index = static_cast<decltype(index)>(BoundBy<C4Integer>(Data[2].getInt(), 0, 1));
 		return new C4FindObjectActionTarget(Data[1].getObj(), index);
 	}
 
