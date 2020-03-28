@@ -22,12 +22,12 @@ init:
 - cmd: git config --global core.autocrlf true
 
 install:
-  - cmd: powershell -Command Start-FileDownload http://assets.maxmitti.tk/openclonk-deps-vs140-i386-easy.7z
-  - cmd: 7z x openclonk-deps-vs140-i386-easy.7z
+  - cmd: vcpkg install freetype:x86-windows glew:x86-windows zlib:x86-windows
   - cmd: powershell -Command Start-FileDownload http://fulgen.bplaced.net/files/fmodapi375win.zip
   - cmd: 7z x fmodapi375win.zip
-  - cmd: copy fmodapi375win\api\inc\* deps\include
-  - cmd: copy fmodapi375win\api\lib\* deps\lib
+  - cmd: mkdir deps
+  - cmd: move fmodapi375win\api\inc deps\include
+  - cmd: move fmodapi375win\api\lib deps\lib
   - sh: |
       mkdir ramdisk
       sudo mount -t tmpfs tmpfs ramdisk
@@ -38,7 +38,7 @@ install:
       fi
 
 before_build:
-  - cmd: cmake -G "Visual Studio 15 2017" -DCMAKE_BUILD_TYPE=RelWithDebInfo .
+  - cmd: cmake -G "Visual Studio 15 2017" -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_TOOLCHAIN_FILE=c:/tools/vcpkg/scripts/buildsystems/vcpkg.cmake .
   - cmd: ls
 
 build:
@@ -70,7 +70,8 @@ after_build:
   - cmd: ls
   - cmd: ls RelWithDebInfo
   - cmd: mkdir appdir
-  - cmd: copy glew32.dll appdir
+  - cmd: copy C:\tools\vcpkg\installed\x86-windows\bin\glew32.dll appdir
+  - cmd: copy RelWithDebInfo\*.dll appdir
   - cmd: copy RelWithDebInfo\*.exe appdir
   - cmd: copy RelWithDebInfo\*.pdb appdir
   - cmd: cd appdir
