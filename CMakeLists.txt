@@ -45,6 +45,7 @@ set(EXTRA_DEPS_DIR "deps" CACHE PATH "Additional directory to search for librari
 include_directories(${EXTRA_DEPS_DIR}/include)
 list(APPEND CMAKE_PREFIX_PATH ${EXTRA_DEPS_DIR})
 
+
 # Add cmake directory to module path
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
@@ -102,7 +103,7 @@ CMAKE_DEPENDENT_OPTION(USE_WIC "Use WIC instead of libjpeg and libpng" ON
 CMAKE_DEPENDENT_OPTION(WITH_DEVELOPER_MODE "Use GTK for the developer mode" OFF
 	"NOT USE_CONSOLE" OFF)
 
-# Check whether SDL_mixer should be used
+	# Check whether SDL_mixer should be used
 if (ENABLE_SOUND AND (NOT WIN32 OR NOT USE_FMOD))
 	set(USE_SDL_MIXER ON)
 endif ()
@@ -321,6 +322,8 @@ endif ()
 if (APPLE)
 	target_link_libraries(clonk "-framework AppKit")
 endif ()
+
+target_link_libraries(clonk ${EXTRA_LINK_LIBS})
 
 # Link X11
 if (USE_X11)
