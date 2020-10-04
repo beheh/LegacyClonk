@@ -215,8 +215,7 @@ void C4Network2RefServer::RespondReference(const C4NetIO::addr_t &addr)
 // *** C4Network2HTTPClient
 
 C4Network2HTTPClient::C4Network2HTTPClient()
-	: fBusy(false), fSuccess(false), fConnected(false), iDownloadedSize(0), iTotalSize(0), fBinary(false), iDataOffset(0),
-	pNotify(nullptr)
+	: fBusy(false), fSuccess(false), fConnected(false), iDownloadedSize(0), iTotalSize(0), fBinary(false), iDataOffset(0)
 {
 	C4NetIOTCP::SetCallback(this);
 }
@@ -396,15 +395,19 @@ void C4Network2HTTPClient::OnDisconn(const C4NetIO::addr_t &AddrPeer, C4NetIO *p
 	}
 	fConnected = false;
 	// Notify
-	if (pNotify)
-		pNotify->PushEvent(Ev_HTTP_Response, this);
+	if (thread)
+	{
+		notify();
+	}
 }
 
 void C4Network2HTTPClient::OnPacket(const class C4NetIOPacket &rPacket, C4NetIO *pNetIO)
 {
 	// Everything worthwhile was already done in UnpackPacket. Only do notify callback
-	if (pNotify)
-		pNotify->PushEvent(Ev_HTTP_Response, this);
+	if (thread)
+	{
+		notify();
+	}
 }
 
 bool C4Network2HTTPClient::Execute(int iMaxTime)
@@ -436,54 +439,70 @@ int C4Network2HTTPClient::GetTimeout()
 	return MaxTimeout(C4NetIOTCP::GetTimeout(), static_cast<int>(1000 * std::max<time_t>(time(nullptr) - iRequestTimeout, 0)));
 }
 
-bool C4Network2HTTPClient::Query(const StdBuf &Data, bool fBinary)
+bool C4Network2HTTPClient::Query(QueryMode mode, const StdBuf &Data, bool binary, Headers headers)
 {
 	if (Server.isNull()) return false;
+
+	const char *modeString;
+	switch (mode)
+	{
+	case QueryMode::GET:
+		modeString = "GET";
+		break;
+	case QueryMode::POST:
+		modeString = "POST";
+		break;
+	default:
+		throw std::runtime_error{"Invalid mode"};
+	}
+
 	// Cancel previous request
 	if (fBusy)
 		Cancel("Cancelled");
 	// No result known yet
 	ResultString.Clear();
 	// store mode
-	this->fBinary = fBinary;
+	this->fBinary = binary;
+
 	// Create request
-	const char *szCharset = GetCharsetCodeName(Config.General.LanguageCharset);
-	StdStrBuf Header;
-	if (Data.getSize())
-		Header.Format(
-			"POST %s HTTP/1.0\r\n"
-			"Host: %s\r\n"
-			"Connection: Close\r\n"
-			"Content-Length: %zu\r\n"
-			"Content-Type: text/plain; encoding=%s\r\n"
-			"Accept-Charset: %s\r\n"
-			"Accept-Encoding: gzip\r\n"
-			"Accept-Language: %s\r\n"
-			"User-Agent: " C4ENGINENAME "/" C4VERSION "\r\n"
-			"\r\n",
-			RequestPath.getData(),
-			Server.getData(),
-			Data.getSize(),
-			szCharset,
-			szCharset,
-			Config.General.LanguageEx);
-	else
-		Header.Format(
-			"GET %s HTTP/1.0\r\n"
-			"Host: %s\r\n"
-			"Connection: Close\r\n"
-			"Accept-Charset: %s\r\n"
-			"Accept-Encoding: gzip\r\n"
-			"Accept-Language: %s\r\n"
-			"User-Agent: " C4ENGINENAME "/" C4VERSION "\r\n"
-			"\r\n",
-			RequestPath.getData(),
-			Server.getData(),
-			szCharset,
-			Config.General.LanguageEx);
-	// Compose query
-	Request.Take(Header.GrabPointer(), Header.getLength());
+
+	const char *const charset{GetCharsetCodeName(Config.General.LanguageCharset)};
+
+	headers["Host"] = Server.getData();
+	headers["Accept-Charset"] = charset;
+	headers["Accept-Encoding"] = "gzip";
+	headers["Accept-Language"] = Config.General.LanguageEx;
+	headers["Connection"] = "Close";
+
+	const std::string size{std::to_string(Data.getSize())};
+	headers["Content-Length"] = size;
+
+	headers["User-Agent"] = C4ENGINENAME "/" C4VERSION;
+
+	if (!headers.count("Content-Type"))
+	{
+		const char defaultType[]{"text/plain; encoding="};
+		const size_t size{sizeof(defaultType) + strlen(charset)};
+
+		auto *buffer = reinterpret_cast<char *>(alloca(size));
+		strcpy(buffer, defaultType);
+		strcpy(buffer + sizeof(defaultType) - 1, charset);
+
+		headers["Content-Type"] = buffer; // alloca will live until the end of the stack
+	}
+
+	StdStrBuf header;
+	header.Format("%s %s HTTP/1.0\r\n", modeString, RequestPath.getData());
+	for (const auto &[key, value] : headers)
+	{
+		header.AppendFormat("%s: %s\r\n", key.data(), value.data());
+	}
+
+	header.Append("\r\n");
+
+	Request.Take(header.GrabPointer(), header.getSize());
 	Request.Append(Data);
+
 	// Start connecting
 	if (!Connect(ServerAddr))
 		return false;
@@ -582,6 +601,18 @@ bool C4Network2HTTPClient::SetServer(const char *szServerAddress)
 	return true;
 }
 
+void C4Network2HTTPClient::SetNotify(class C4InteractiveThread *thread, const Notify &notify)
+{
+	this->thread = thread;
+	if (thread)
+	{
+		this->notify = notify ? std::function<void()>{[notify, this]{ this->thread->ExecuteInMainThread([notify, this]{ notify(this); }); }} : [this] { this->thread->PushEvent(Ev_HTTP_Response, this); };
+	}
+	else
+	{
+		this->notify = {};
+	}
+}
 // *** C4Network2RefClient
 
 bool C4Network2RefClient::QueryReferences()
@@ -589,7 +620,7 @@ bool C4Network2RefClient::QueryReferences()
 	// invalidate version
 	fVerSet = false;
 	// Perform an Query query
-	return Query(nullptr, false);
+	return Query(QueryMode::GET, nullptr, false);
 }
 
 bool C4Network2RefClient::GetReferences(C4Network2Reference ** &rpReferences, int32_t &rRefCount)

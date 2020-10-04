@@ -20,6 +20,7 @@
 #include "StdSync.h"
 
 #include <any>
+#include <functional>
 
 // Event types
 enum C4InteractiveEventType
@@ -39,6 +40,8 @@ enum C4InteractiveEventType
 	Ev_Net_Conn,
 	Ev_Net_Disconn,
 	Ev_Net_Packet,
+
+	Ev_MainThread,
 
 	Ev_Last = Ev_Net_Packet,
 };
@@ -93,6 +96,7 @@ public:
 	bool ThreadLogF(const char *szMessage, ...) GNUC_FORMAT_ATTRIBUTE_O;
 	bool ThreadLogS(const char *szMessage);
 	bool ThreadLogSF(const char *szMessage, ...) GNUC_FORMAT_ATTRIBUTE_O;
+	bool ExecuteInMainThread(const std::function<void()> &function);
 
 	// event handlers
 	void SetCallback(C4InteractiveEventType eEvent, Callback *pnNetworkCallback)

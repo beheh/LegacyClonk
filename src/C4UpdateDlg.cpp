@@ -379,7 +379,7 @@ bool C4UpdateDlg::CheckForUpdates(C4GUI::Screen *pScreen, bool fAutomatic)
 bool C4Network2VersionInfoClient::QueryVersion()
 {
 	// Perform an Query query
-	return Query(nullptr, false);
+	return Query(QueryMode::GET, nullptr, false);
 }
 
 bool C4Network2VersionInfoClient::GetVersion(C4GameVersion *piVerOut)

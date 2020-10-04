@@ -304,7 +304,7 @@ bool C4LeagueClient::Start(const C4Network2Reference &Ref)
 			false));
 	ModifyForChecksum(&QueryText, "-----");
 	// Perform query
-	return Query(QueryText.getData(), false);
+	return Query(QueryMode::POST, QueryText.getData(), false);
 }
 
 bool C4LeagueClient::GetStartReply(StdStrBuf *pMessage, StdStrBuf *pLeague, StdStrBuf *pStreamingAddr, int32_t *pSeed, int32_t *pMaxPlayers)
@@ -354,7 +354,7 @@ bool C4LeagueClient::Update(const C4Network2Reference &Ref)
 			false));
 	ModifyForChecksum(&QueryText, "-----");
 	// Perform query
-	return Query(QueryText.getData(), false);
+	return Query(QueryMode::POST, QueryText.getData(), false);
 }
 
 bool C4LeagueClient::GetUpdateReply(StdStrBuf *pMessage, C4ClientPlayerInfos *pPlayerLeagueInfos)
@@ -386,7 +386,7 @@ bool C4LeagueClient::End(const C4Network2Reference &Ref, const char *szRecordNam
 			false));
 	ModifyForChecksum(&QueryText, "-----");
 	// Perform query
-	return Query(QueryText.getData(), false);
+	return Query(QueryMode::POST, QueryText.getData(), false);
 }
 
 bool C4LeagueClient::GetEndReply(StdStrBuf *pMessage, C4RoundResultsPlayers *pRoundResults)
@@ -423,7 +423,7 @@ bool C4LeagueClient::Auth(const C4PlayerInfo &PlrInfo, const char *szAccount, co
 			false));
 	ModifyForChecksum(&QueryText, "-----");
 	// Perform query
-	return Query(QueryText.getData(), false);
+	return Query(QueryMode::POST, QueryText.getData(), false);
 }
 
 bool C4LeagueClient::GetAuthReply(StdStrBuf *pMessage, StdStrBuf *pAUID, StdStrBuf *pAccount, bool *pRegister)
@@ -469,7 +469,7 @@ bool C4LeagueClient::AuthCheck(const C4PlayerInfo &PlrInfo)
 			false));
 	ModifyForChecksum(&QueryText, "-----");
 	// Perform query
-	return Query(QueryText.getData(), false);
+	return Query(QueryMode::POST, QueryText.getData(), false);
 }
 
 bool C4LeagueClient::GetAuthCheckReply(StdStrBuf *pMessage, const char *szLeague, C4PlayerInfo *pPlrInfo)
@@ -500,7 +500,7 @@ bool C4LeagueClient::ReportDisconnect(const C4ClientPlayerInfos &rFeedbackClient
 			false));
 	ModifyForChecksum(&QueryText, "-----");
 	// Perform query
-	return Query(QueryText.getData(), false);
+	return Query(QueryMode::POST, QueryText.getData(), false);
 }
 
 bool C4LeagueClient::GetReportDisconnectReply(StdStrBuf *pMessage)

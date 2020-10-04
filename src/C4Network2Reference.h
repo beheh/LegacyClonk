@@ -30,6 +30,9 @@
 #include "C4InputValidation.h"
 #include "C4TimeMilliseconds.h"
 
+#include <functional>
+#include <unordered_map>
+
 const int C4Network2HTTPQueryTimeout = 20; // (s)
 constexpr uint32_t C4Network2HTTPHappyEyeballsTimeout = 300; // (ms)
 
@@ -123,6 +126,16 @@ private:
 class C4Network2HTTPClient : public C4NetIOTCP, private C4NetIO::CBClass
 {
 public:
+	enum class QueryMode
+	{
+		GET,
+		POST
+	};
+
+	using Headers = std::unordered_map<std::string_view, std::string_view>;
+	using Notify = std::function<void(C4Network2HTTPClient *)>;
+
+public:
 	C4Network2HTTPClient();
 	virtual ~C4Network2HTTPClient();
 
@@ -143,7 +156,8 @@ private:
 	bool fCompressed;
 
 	// Event queue to use for notify when something happens
-	class C4InteractiveThread *pNotify;
+	class C4InteractiveThread *thread{nullptr};
+	std::function<void()> notify;
 
 protected:
 	StdBuf ResultBin; // set if fBinary
@@ -163,8 +177,8 @@ protected:
 	virtual int32_t GetDefaultPort() { return 80; }
 
 public:
-	bool Query(const StdBuf &Data, bool fBinary);
-	bool Query(const char *szData, bool fBinary) { return Query(StdBuf::MakeRef(szData, SLen(szData)), fBinary); }
+	bool Query(QueryMode mode, const StdBuf &Data, bool binary, Headers headers = {});
+	bool Query(QueryMode mode, const char *szData, bool binary, Headers headers = {}) { return Query(mode, StdBuf::MakeRef(szData, SLen(szData)), binary, headers); }
 
 	bool isBusy() const { return fBusy; }
 	bool isSuccess() const { return fSuccess; }
@@ -172,6 +186,7 @@ public:
 	size_t getTotalSize() const { return iTotalSize; }
 	size_t getDownloadedSize() const { return iDownloadedSize; }
 	const StdBuf &getResultBin() const { assert(fBinary); return ResultBin; }
+	const StdStrBuf &getResultString() const { assert(!fBinary); return ResultString; }
 	const char *getServerName() const { return Server.getData(); }
 	const char *getRequest() const { return RequestPath.getData(); }
 	const C4NetIO::addr_t &getServerAddress() const { return ServerAddr; }
@@ -181,7 +196,7 @@ public:
 
 	bool SetServer(const char *szServerAddress);
 
-	void SetNotify(class C4InteractiveThread *pnNotify) { pNotify = pnNotify; }
+	void SetNotify(class C4InteractiveThread *thread, const Notify &notify = {});
 
 	// Overridden
 	virtual bool Execute(int iMaxTime = TO_INF) override;
