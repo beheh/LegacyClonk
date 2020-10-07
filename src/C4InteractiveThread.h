@@ -33,8 +33,6 @@ enum C4InteractiveEventType
 
 	Ev_FileChange,
 
-	Ev_HTTP_Response,
-
 	Ev_IRC_Message,
 
 	Ev_Net_Conn,

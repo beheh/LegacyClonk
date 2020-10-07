@@ -164,9 +164,8 @@ private:
 	size_t totalSize{0};
 	bool compressed{false};
 
-	// Event queue to use for notify when something happens#
-	class C4InteractiveThread *thread{nullptr};
-	std::function<void()> notify;
+	// Callback to call when something happens
+	Notify notify;
 
 protected:
 	StdBuf resultBin;
@@ -199,7 +198,7 @@ public:
 
 	bool SetServer(std::string_view serverAddress);
 
-	void SetNotify(class C4InteractiveThread *thread, const Notify &notify = {});
+	void SetNotify(const Notify &notify = {}, class C4InteractiveThread *thread = nullptr);
 
 	// Overridden
 	virtual bool Execute(int iMaxTime = C4NetIO::TO_INF) override;

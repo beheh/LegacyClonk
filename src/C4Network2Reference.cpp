@@ -344,9 +344,9 @@ bool C4Network2HTTPClient::Execute(int maxTime)
 			curl_easy_getinfo(e, CURLINFO_PRIMARY_IP, &ip);
 			serverAddress.SetHost(StdStrBuf{ip});
 
-			if (thread)
+			if (notify)
 			{
-				notify();
+				notify(this);
 			}
 
 			curl_easy_cleanup(e);
@@ -595,16 +595,15 @@ bool C4Network2HTTPClient::SetServer(std::string_view serverAddress)
 	return false;
 }
 
-void C4Network2HTTPClient::SetNotify(class C4InteractiveThread *thread, const Notify &notify)
+void C4Network2HTTPClient::SetNotify(const Notify &notify, class C4InteractiveThread *thread)
 {
-	this->thread = thread;
 	if (thread)
 	{
-		this->notify = notify ? std::function<void()>{[notify, this]{ this->thread->ExecuteInMainThread([notify, this]{ notify(this); }); }} : [this] { this->thread->PushEvent(Ev_HTTP_Response, this); };
+		this->notify = [notify, thread](C4Network2HTTPClient *client) { thread->ExecuteInMainThread([client, notify] { notify(client); }); };
 	}
 	else
 	{
-		this->notify = {};
+		this->notify = notify;
 	}
 }
 // *** C4Network2RefClient
