@@ -22,7 +22,12 @@
 #include "C4Version.h"
 #include "C4Network2Reference.h"
 
+#define CURL_STRICTER
+#include <curl/curl.h>
+
 #include <fcntl.h>
+
+#include <regex>
 
 // *** C4Network2Reference
 
@@ -214,391 +219,323 @@ void C4Network2RefServer::RespondReference(const C4NetIO::addr_t &addr)
 
 // *** C4Network2HTTPClient
 
-C4Network2HTTPClient::C4Network2HTTPClient()
-	: fBusy(false), fSuccess(false), fConnected(false), iDownloadedSize(0), iTotalSize(0), fBinary(false), iDataOffset(0)
+C4Network2HTTPClient::~C4Network2HTTPClient()
 {
-	C4NetIOTCP::SetCallback(this);
+	Cancel({});
+
+	if (multiHandle)
+	{
+		curl_multi_cleanup(multiHandle);
+	}
+
+#ifdef STDSCHEDULER_USE_EVENTS
+	if (event)
+	{
+		WSACloseEvent(event);
+	}
+#endif
 }
 
-C4Network2HTTPClient::~C4Network2HTTPClient() {}
-
-void C4Network2HTTPClient::PackPacket(const C4NetIOPacket &rPacket, StdBuf &rOutBuf)
+bool C4Network2HTTPClient::Init()
 {
-	// Just append the packet
-	rOutBuf.Append(rPacket);
+	multiHandle = curl_multi_init();
+	if (!multiHandle)
+	{
+		return false;
+	}
+
+#ifdef STDSCHEDULER_USE_EVENTS
+	if (event = WSACreateEvent(); event == WSA_INVALID_EVENT)
+	{
+		SetError("Could not create socket event");
+		curl_multi_cleanup(multiHandle);
+		return false;
+	}
+#endif
+
+	curl_multi_setopt(multiHandle, CURLMOPT_SOCKETFUNCTION, &C4Network2HTTPClient::SSocketCallback);
+	curl_multi_setopt(multiHandle, CURLMOPT_SOCKETDATA, this);
+
+	return true;
 }
 
-size_t C4Network2HTTPClient::UnpackPacket(const StdBuf &rInBuf, const C4NetIO::addr_t &addr)
+bool C4Network2HTTPClient::Execute(int maxTime)
 {
-	// since new data arrived, increase timeout time
-	ResetRequestTimeout();
-	// Check for complete header
-	if (!iDataOffset)
+	int running{0};
+#ifdef STDSCHEDULER_USE_EVENTS
+	// On Windows, StdScheduler doesn't inform us about which fd triggered the
+	// event, so we have to check manually.
+	if (WaitForSingleObject(event, 0) == WAIT_OBJECT_0)
 	{
-		// Copy data into string buffer (terminate)
-		StdStrBuf Data; Data.Copy(getBufPtr<char>(rInBuf), rInBuf.getSize());
-		const char *pData = Data.getData();
-		// Header complete?
-		const char *pContent = SSearch(pData, "\r\n\r\n");
-		if (!pContent)
-			return 0;
-		// Read the header
-		if (!ReadHeader(Data))
+		// copy map to prevent crashes
+		auto tmp = sockets;
+		for (const auto &[socket, what] : tmp)
 		{
-			fBusy = fSuccess = false;
-			Close(addr);
-			return rInBuf.getSize();
+			if (WSANETWORKEVENTS networkEvents; !WSAEnumNetworkEvents(socket, event, &networkEvents))
+			{
+				int eventBitmask{0};
+				if (networkEvents.lNetworkEvents & (FD_READ | FD_ACCEPT | FD_CLOSE)) eventBitmask |= CURL_CSELECT_IN;
+				if (networkEvents.lNetworkEvents & (FD_WRITE | FD_CONNECT)) eventBitmask |= CURL_CSELECT_OUT;
+				curl_multi_socket_action(multiHandle, socket, eventBitmask, &running);
+			}
 		}
 	}
-	iDownloadedSize = rInBuf.getSize() - iDataOffset;
-	// Check if the packet is complete
-	if (iTotalSize > iDownloadedSize)
-	{
-		return 0;
-	}
-	// Get data, uncompress it if needed
-	StdBuf Data = rInBuf.getPart(iDataOffset, iTotalSize);
-	if (fCompressed)
-		if (!Decompress(&Data))
-		{
-			fBusy = fSuccess = false;
-			Close(addr);
-			return rInBuf.getSize();
-		}
-	// Save the result
-	if (fBinary)
-		ResultBin.Copy(Data);
+#else
+	//TODO
+#error TODO
+#endif
 	else
-		ResultString.Copy(getBufPtr<char>(Data), Data.getSize());
-	fBusy = false; fSuccess = true;
-	// Callback
-	OnPacket(C4NetIOPacket(Data, addr), this);
-	// Done
-	Close(addr);
-	return rInBuf.getSize();
-}
+	{
+		curl_multi_socket_action(multiHandle, CURL_SOCKET_TIMEOUT, 0, &running);
+	}
 
-bool C4Network2HTTPClient::ReadHeader(const StdStrBuf &Data)
-{
-	const char *pData = Data.getData();
-	const char *pContent = SSearch(pData, "\r\n\r\n");
-	if (!pContent)
-		return 0;
-	// Parse header line
-	int iHTTPVer1, iHTTPVer2, iResponseCode, iStatusStringPtr;
-	if (sscanf(pData, "HTTP/%d.%d %d %n", &iHTTPVer1, &iHTTPVer2, &iResponseCode, &iStatusStringPtr) != 3)
+	CURLMsg *message;
+	do
 	{
-		Error = "Invalid status line!";
-		return false;
-	}
-	// Check HTTP version
-	if (iHTTPVer1 != 1)
-	{
-		Error.Format("Unsupported HTTP version: %d.%d!", iHTTPVer1, iHTTPVer2);
-		return false;
-	}
-	// Check code
-	if (iResponseCode != 200)
-	{
-		// Get status string
-		StdStrBuf StatusString; StatusString.CopyUntil(pData + iStatusStringPtr, '\r');
-		// Create error message
-		Error.Format("HTTP server responded %d: %s", iResponseCode, StatusString.getData());
-		return false;
-	}
-	// Get content length
-	const char *pContentLength = SSearch(pData, "\r\nContent-Length:");
-	int iContentLength;
-	if (!pContentLength || pContentLength > pContent ||
-		sscanf(pContentLength, "%d", &iContentLength) != 1)
-	{
-		Error.Format("Invalid server response: Content-Length is missing!");
-		return false;
-	}
-	iTotalSize = iContentLength;
-	iDataOffset = (pContent - pData);
-	// Get content encoding
-	const char *pContentEncoding = SSearch(pData, "\r\nContent-Encoding:");
-	if (pContentEncoding)
-	{
-		while (*pContentEncoding == ' ') pContentEncoding++;
-		StdStrBuf Encoding; Encoding.CopyUntil(pContentEncoding, '\r');
-		if (Encoding == "gzip")
-			fCompressed = true;
-		else
-			fCompressed = false;
-	}
-	else
-		fCompressed = false;
-	// Okay
-	return true;
-}
-
-bool C4Network2HTTPClient::Decompress(StdBuf *pData)
-{
-	size_t iSize = pData->getSize();
-	// Create buffer
-	uint32_t iOutSize = *getBufPtr<uint32_t>(*pData, pData->getSize() - sizeof(uint32_t));
-	iOutSize = std::min<uint32_t>(iOutSize, iSize * 1000);
-	StdBuf Out; Out.New(iOutSize);
-	// Prepare stream
-	z_stream zstrm{};
-	zstrm.next_in = const_cast<Byte *>(getBufPtr<Byte>(*pData));
-	zstrm.avail_in = pData->getSize();
-	zstrm.next_out = getMBufPtr<Byte>(Out);
-	zstrm.avail_out = Out.getSize();
-	// Inflate...
-	if (inflateInit2(&zstrm, 15 + 16) != Z_OK)
-	{
-		Error.Format("Could not decompress data!");
-		return false;
-	}
-	// Inflate!
-	if (inflate(&zstrm, Z_FINISH) != Z_STREAM_END)
-	{
-		inflateEnd(&zstrm);
-		Error.Format("Could not decompress data!");
-		return false;
-	}
-	// Return the buffer
-	Out.SetSize(zstrm.total_out);
-	pData->Take(Out);
-	// Okay
-	inflateEnd(&zstrm);
-	return true;
-}
-
-bool C4Network2HTTPClient::OnConn(const C4NetIO::addr_t &AddrPeer, const C4NetIO::addr_t &AddrConnect, const C4NetIO::addr_t *pOwnAddr, C4NetIO *pNetIO)
-{
-	// Make sure we're actually waiting for this connection
-	if (fConnected || (AddrConnect != ServerAddr && AddrConnect != ServerAddrFallback))
-		return false;
-	// Save pack peer address
-	PeerAddr = AddrPeer;
-	// Send the request
-	if (!Send(C4NetIOPacket(Request, AddrPeer)))
-	{
-		Error.Format("Unable to send HTTP request: %s", Error.getData());
-	}
-	Request.Clear();
-	fConnected = true;
-	return true;
-}
-
-void C4Network2HTTPClient::OnDisconn(const C4NetIO::addr_t &AddrPeer, C4NetIO *pNetIO, const char *szReason)
-{
-	// Got no complete packet? Failure...
-	if (!fSuccess && Error.isNull())
-	{
-		fBusy = false;
-		Error.Format("Unexpected disconnect: %s", szReason);
-	}
-	fConnected = false;
-	// Notify
-	if (thread)
-	{
-		notify();
-	}
-}
-
-void C4Network2HTTPClient::OnPacket(const class C4NetIOPacket &rPacket, C4NetIO *pNetIO)
-{
-	// Everything worthwhile was already done in UnpackPacket. Only do notify callback
-	if (thread)
-	{
-		notify();
-	}
-}
-
-bool C4Network2HTTPClient::Execute(int iMaxTime)
-{
-	// Check timeout
-	if (fBusy)
-	{
-		if (C4TimeMilliseconds::Now() > HappyEyeballsTimeout)
+		int messagesInQueue{0};
+		message = curl_multi_info_read(multiHandle, &messagesInQueue);
+		if (message && message->msg == CURLMSG_DONE)
 		{
-			HappyEyeballsTimeout = C4TimeMilliseconds::PositiveInfinity;
-			Application.InteractiveThread.ThreadLogSF("HTTP: Starting fallback connection to %s (%s)", Server.getData(), ServerAddrFallback.ToString().getData());
-			Connect(ServerAddrFallback);
-		}
+			CURL *const e{message->easy_handle};
+			assert(e == curlHandle);
+			curlHandle = nullptr;
+			curl_multi_remove_handle(multiHandle, e);
 
-		if (time(nullptr) > iRequestTimeout)
-		{
-			Cancel("Request timeout");
-			return true;
+			// Check for errors and notify listeners. Note that curl fills
+			// the error buffer automatically.
+			success = message->data.result == CURLE_OK;
+			if (!success && error.empty())
+			{
+				SetError(curl_easy_strerror(message->data.result));
+			}
+
+			char *ip;
+			curl_easy_getinfo(e, CURLINFO_PRIMARY_IP, &ip);
+			serverAddress.SetHost(StdStrBuf{ip});
+
+			if (thread)
+			{
+				notify();
+			}
+
+			curl_easy_cleanup(e);
 		}
 	}
-	// Execute normally
-	return C4NetIOTCP::Execute(iMaxTime);
+	while (message);
+
+	return true;
 }
 
 int C4Network2HTTPClient::GetTimeout()
 {
-	if (!fBusy)
-		return C4NetIOTCP::GetTimeout();
-	return MaxTimeout(C4NetIOTCP::GetTimeout(), static_cast<int>(1000 * std::max<time_t>(time(nullptr) - iRequestTimeout, 0)));
+	long timeout;
+	curl_multi_timeout(multiHandle, &timeout);
+	return timeout >= 0 ? timeout : 1000;
 }
 
-bool C4Network2HTTPClient::Query(QueryMode mode, const StdBuf &Data, bool binary, Headers headers)
+bool C4Network2HTTPClient::Query(const StdBuf &Data, bool binary, Headers headers)
 {
-	if (Server.isNull()) return false;
+	if (serverName.empty()) return false;
 
-	const char *modeString;
-	switch (mode)
-	{
-	case QueryMode::GET:
-		modeString = "GET";
-		break;
-	case QueryMode::POST:
-		modeString = "POST";
-		break;
-	default:
-		throw std::runtime_error{"Invalid mode"};
-	}
 
 	// Cancel previous request
-	if (fBusy)
+	if (curlHandle)
 		Cancel("Cancelled");
+
 	// No result known yet
-	ResultString.Clear();
-	// store mode
-	this->fBinary = binary;
+	resultBin.Clear();
+	resultString.clear();
+
+	this->binary = binary;
+
+	CURL *const curl{curl_easy_init()};
+	if (!curl)
+	{
+		return false;
+	}
+
+#ifdef _DEBUG
+	curl_easy_setopt(curl, CURLOPT_VERBOSE, 1);
+#endif
+	curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+	curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "gzip");
+	curl_easy_setopt(curl, CURLOPT_USERAGENT, C4ENGINENAME "/" C4VERSION );
+	curl_easy_setopt(curl, CURLOPT_TIMEOUT, C4Network2HTTPQueryTimeout);
 
 	// Create request
-
 	const char *const charset{GetCharsetCodeName(Config.General.LanguageCharset)};
 
-	headers["Host"] = Server.getData();
 	headers["Accept-Charset"] = charset;
-	headers["Accept-Encoding"] = "gzip";
 	headers["Accept-Language"] = Config.General.LanguageEx;
-	headers["Connection"] = "Close";
-
-	const std::string size{std::to_string(Data.getSize())};
-	headers["Content-Length"] = size;
 
 	headers["User-Agent"] = C4ENGINENAME "/" C4VERSION;
 
-	if (!headers.count("Content-Type"))
+	curl_slist *headerList{nullptr};
+
+	if (Data.getSize())
 	{
-		const char defaultType[]{"text/plain; encoding="};
-		const size_t size{sizeof(defaultType) + strlen(charset)};
+		requestData = Data;
+		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, Data.getData());
+		curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, Data.getSize());
 
-		auto *buffer = reinterpret_cast<char *>(alloca(size));
-		strcpy(buffer, defaultType);
-		strcpy(buffer + sizeof(defaultType) - 1, charset);
+		if (!headers.count("Content-Type"))
+		{
+			const char defaultType[]{"text/plain; encoding="};
+			const size_t size{sizeof(defaultType) + strlen(charset)};
 
-		headers["Content-Type"] = buffer; // alloca will live until the end of the stack
+			auto *buffer = reinterpret_cast<char *>(alloca(size));
+			strcpy(buffer, defaultType);
+			strcpy(buffer + sizeof(defaultType) - 1, charset);
+
+			headers["Content-Type"] = buffer; // alloca will live until the end of the stack
+		}
+
+		// Disable the Expect: 100-Continue header which curl automaticallY
+		// adds for POST requests.
+		headerList = curl_slist_append(headerList, "Expect:");
 	}
 
-	StdStrBuf header;
-	header.Format("%s %s HTTP/1.0\r\n", modeString, RequestPath.getData());
 	for (const auto &[key, value] : headers)
 	{
-		header.AppendFormat("%s: %s\r\n", key.data(), value.data());
+		headerList = curl_slist_append(headerList, FormatString("%s: %s", key.data(), value.data()).getData());
 	}
 
-	header.Append("\r\n");
+	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headerList);
+	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, &C4Network2HTTPClient::SWriteCallback);
+	curl_easy_setopt(curl, CURLOPT_WRITEDATA, this);
+	curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, C4Network2HTTPClient::SProgressCallback);
+	curl_easy_setopt(curl, CURLOPT_XFERINFODATA, this);
 
-	Request.Take(header.GrabPointer(), header.getSize());
-	Request.Append(Data);
-
-	// Start connecting
-	if (!Connect(ServerAddr))
-		return false;
-
-	if (!ServerAddrFallback.IsNull())
-	{
-		HappyEyeballsTimeout = C4TimeMilliseconds::Now() + C4Network2HTTPHappyEyeballsTimeout;
-	}
-	else
-	{
-		HappyEyeballsTimeout = C4TimeMilliseconds::PositiveInfinity;
-	}
-
-	// Okay, request will be performed when connection is complete
-	fBusy = true;
-	iDataOffset = 0;
-	ResetRequestTimeout();
 	ResetError();
+	error.resize(CURL_ERROR_SIZE);
+	curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, error.data());
+
+	curl_multi_add_handle(multiHandle, curl);
+	curlHandle = curl;
+	downloadedSize = totalSize = 0;
+
+	int running;
+	curl_multi_socket_action(multiHandle, CURL_SOCKET_TIMEOUT, 0, &running);
+
 	return true;
 }
 
-void C4Network2HTTPClient::ResetRequestTimeout()
+size_t C4Network2HTTPClient::SWriteCallback(char *data, size_t size, size_t nmemb, void *userData)
 {
-	// timeout C4Network2HTTPQueryTimeout seconds from this point
-	iRequestTimeout = time(nullptr) + C4Network2HTTPQueryTimeout;
+	return reinterpret_cast<C4Network2HTTPClient *>(userData)->WriteCallback(data, size * nmemb);
 }
 
-void C4Network2HTTPClient::Cancel(const char *szReason)
+size_t C4Network2HTTPClient::WriteCallback(char *data, size_t size)
 {
-	// Close connection - and connection attempt
-	Close(ServerAddr);
-	Close(ServerAddrFallback);
-	Close(PeerAddr);
+	if (binary)
+	{
+		resultBin.Append(data, size);
+	}
+	else
+	{
+		resultString.append(data, size);
+	}
 
-	// Reset flags
-	fBusy = fSuccess = fConnected = fBinary = false;
-	iDownloadedSize = iTotalSize = iDataOffset = 0;
-	Error = szReason;
+	return size;
+}
+
+int C4Network2HTTPClient::SProgressCallback(void *client, int64_t dltotal, int64_t dlnow, int64_t, int64_t)
+{
+	return reinterpret_cast<C4Network2HTTPClient *>(client)->ProgressCallback(dltotal, dlnow);
+}
+
+int C4Network2HTTPClient::ProgressCallback(int64_t downloadTotal, int64_t downloadNow)
+{
+	downloadedSize = static_cast<size_t>(downloadNow);
+	totalSize = static_cast<size_t>(downloadTotal);
+	return 0;
+}
+
+int C4Network2HTTPClient::SSocketCallback(CURL *, curl_socket_t s, int what, void *userData, void *)
+{
+	return reinterpret_cast<C4Network2HTTPClient *>(userData)->SocketCallback(s, what);
+}
+
+int C4Network2HTTPClient::SocketCallback(curl_socket_t s, int what)
+{
+#ifdef STDSCHEDULER_USE_EVENTS
+	static constexpr long networkEventsIn{FD_READ | FD_ACCEPT | FD_CLOSE};
+	static constexpr long networkEventsOut{FD_WRITE | FD_CONNECT};
+
+	long networkEvents;
+	switch (what)
+	{
+	case CURL_POLL_IN:
+		networkEvents = networkEventsIn;
+		break;
+
+	case CURL_POLL_OUT:
+		networkEvents = networkEventsOut;
+		break;
+
+	case CURL_POLL_INOUT:
+		networkEvents = networkEventsIn | networkEventsOut;
+		break;
+
+	default:
+		networkEvents = 0;
+		break;
+	}
+
+	if (WSAEventSelect(s, event, networkEvents) == SOCKET_ERROR)
+	{
+		SetError("Could not set event");
+		return 1;
+	}
+#endif
+	if (what == CURL_POLL_REMOVE)
+	{
+		sockets.erase(s);
+	}
+	else
+	{
+		sockets[s] = what;
+	}
+
+	return 0;
+}
+
+void C4Network2HTTPClient::Cancel(std::string_view reason)
+{
+	if (curlHandle)
+	{
+		curl_multi_remove_handle(multiHandle, curlHandle);
+		curl_easy_cleanup(curlHandle);
+		curlHandle = nullptr;
+	}
+
+	binary = false;
+	downloadedSize = totalSize = 0;
+	SetError(reason);
 }
 
 void C4Network2HTTPClient::Clear()
 {
-	fBusy = fSuccess = fConnected = fBinary = false;
-	iDownloadedSize = iTotalSize = iDataOffset = 0;
-	ResultBin.Clear();
-	ResultString.Clear();
-	Error.Clear();
+	Cancel({});
+	serverAddress.Clear();
+	resultBin.Clear();
+	resultString.clear();
 }
 
-bool C4Network2HTTPClient::SetServer(const char *szServerAddress)
+bool C4Network2HTTPClient::SetServer(std::string_view serverAddress)
 {
-	// Split address
-	const char *pRequestPath;
-	if (pRequestPath = strchr(szServerAddress, '/'))
+	static const std::regex hostnameRegex{R"(^(:?[a-z]+:\/\/)?([^/:]+).*)", std::regex::icase};
+	if (std::cmatch match; std::regex_match(serverAddress.data(), match, hostnameRegex))
 	{
-		Server.CopyUntil(szServerAddress, '/');
-		RequestPath = pRequestPath;
+		// CURL validates URLs only on connect.
+		url = serverAddress;
+		serverName = match[2].str();
+		return true;
 	}
-	else
-	{
-		Server = szServerAddress;
-		RequestPath = "/";
-	}
-	// Resolve address
-	ServerAddr.SetAddress(Server);
-	if (ServerAddr.IsNull())
-	{
-		SetError(FormatString("Could not resolve server address %s!", Server.getData()).getData());
-		return false;
-	}
-	ServerAddr.SetDefaultPort(GetDefaultPort());
-
-	if (ServerAddr.GetFamily() == C4NetIO::HostAddress::IPv6)
-	{
-		// Try to find a fallback IPv4 address for Happy Eyeballs.
-		ServerAddrFallback.SetAddress(Server, C4NetIO::HostAddress::IPv4);
-		ServerAddrFallback.SetDefaultPort(GetDefaultPort());
-	}
-	else
-	{
-		ServerAddrFallback.Clear();
-	}
-
-	// Remove port
-	const auto &firstColon = std::strchr(Server.getData(), ':');
-	const auto &lastColon = std::strrchr(Server.getData(), ':');
-	if (firstColon)
-	{
-		// Hostname/IPv4 address or IPv6 address with port (e.g. [::1]:1234)
-		if (firstColon == lastColon || (Server[0] == '[' && lastColon[-1] == ']'))
-			Server.SetLength(lastColon - Server.getData());
-	}
-
-	// Done
-	ResetError();
-	return true;
+	// The hostnameRegex above is pretty stupid, so we will reject only very
+	// malformed URLs immediately.
+	SetError("Malformed URL");
+	return false;
 }
 
 void C4Network2HTTPClient::SetNotify(class C4InteractiveThread *thread, const Notify &notify)
@@ -620,7 +557,7 @@ bool C4Network2RefClient::QueryReferences()
 	// invalidate version
 	fVerSet = false;
 	// Perform an Query query
-	return Query(QueryMode::GET, nullptr, false);
+	return Query(nullptr, false);
 }
 
 bool C4Network2RefClient::GetReferences(C4Network2Reference ** &rpReferences, int32_t &rRefCount)
@@ -635,7 +572,7 @@ bool C4Network2RefClient::GetReferences(C4Network2Reference ** &rpReferences, in
 	{
 		// Create compiler
 		StdCompilerINIRead Comp;
-		Comp.setInput(ResultString);
+		Comp.setInput(StdStrBuf::MakeRef(resultString.c_str()));
 		Comp.Begin();
 		// get current version
 		Comp.Value(mkNamingAdapt(mkInsertAdapt(mkInsertAdapt(mkInsertAdapt(

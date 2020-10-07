@@ -3050,7 +3050,7 @@ bool C4Network2::StreamOut()
 	size_t iStreamAmount = getPendingStreamData();
 	iCurrentStreamAmount = iStreamAmount;
 	iLastStreamAttempt = time(nullptr);
-	return pStreamer->Query(C4Network2HTTPClient::QueryMode::POST, StdBuf::MakeRef(StreamingBuf.getData(), iStreamAmount), false);
+	return pStreamer->Query(StdBuf::MakeRef(StreamingBuf.getData(), iStreamAmount), false);
 }
 
 bool C4Network2::isStreaming() const

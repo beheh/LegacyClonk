@@ -129,7 +129,7 @@ void C4DownloadDlg::OnIdle()
 		}
 	}
 	const char *szStatusString = LoadResStr("IDS_PRC_DOWNLOADINGFILE");
-	SetStatus(FormatString(szStatusString, GetFilename(HTTPClient.getRequest())).getData(), iProgress);
+	SetStatus(FormatString(szStatusString, GetFilename(HTTPClient.getURL())).getData(), iProgress);
 }
 
 void C4DownloadDlg::UserClose(bool fOK)
@@ -156,7 +156,7 @@ bool C4DownloadDlg::ShowModal(C4GUI::Screen *pScreen, const char *szURL, const c
 	// show dlg
 	if (!Show(pScreen, true)) return false;
 	// start query
-	if (!HTTPClient.Query(C4Network2HTTPClient::QueryMode::GET, nullptr, true)) return false;
+	if (!HTTPClient.Query(nullptr, true)) return false;
 	// first time status update
 	OnIdle();
 	// cycle until query is finished or aborted

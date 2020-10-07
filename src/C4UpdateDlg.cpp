@@ -379,7 +379,7 @@ bool C4UpdateDlg::CheckForUpdates(C4GUI::Screen *pScreen, bool fAutomatic)
 bool C4Network2VersionInfoClient::QueryVersion()
 {
 	// Perform an Query query
-	return Query(QueryMode::GET, nullptr, false);
+	return Query(nullptr, false);
 }
 
 bool C4Network2VersionInfoClient::GetVersion(C4GameVersion *piVerOut)
@@ -394,7 +394,7 @@ bool C4Network2VersionInfoClient::GetVersion(C4GameVersion *piVerOut)
 			mkNamingAdapt(
 				mkParAdapt(*piVerOut, false),
 				"Version"),
-			C4ENGINENAME), ResultString);
+			C4ENGINENAME), StdStrBuf::MakeRef(resultString.c_str()));
 	}
 	catch (const StdCompiler::Exception &e)
 	{
@@ -420,7 +420,7 @@ bool C4Network2VersionInfoClient::GetRedirect(StdStrBuf &rRedirect)
 	{
 		CompileFromBuf<StdCompilerINIRead>(mkNamingAdapt(
 			mkNamingAdapt(mkParAdapt(strUpdateRedirect, StdCompiler::RCT_All), "UpdateServerRedirect", ""),
-			C4ENGINENAME), ResultString);
+			C4ENGINENAME), StdStrBuf::MakeRef(resultString.c_str()));
 	}
 	catch (const StdCompiler::Exception &e)
 	{

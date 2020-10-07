@@ -304,7 +304,7 @@ bool C4LeagueClient::Start(const C4Network2Reference &Ref)
 			false));
 	ModifyForChecksum(&QueryText, "-----");
 	// Perform query
-	return Query(QueryMode::POST, QueryText.getData(), false);
+	return Query(QueryText.getData(), false);
 }
 
 bool C4LeagueClient::GetStartReply(StdStrBuf *pMessage, StdStrBuf *pLeague, StdStrBuf *pStreamingAddr, int32_t *pSeed, int32_t *pMaxPlayers)
@@ -312,7 +312,7 @@ bool C4LeagueClient::GetStartReply(StdStrBuf *pMessage, StdStrBuf *pLeague, StdS
 	if (!isSuccess() || eCurrAction != C4LA_Start) return false;
 	// Parse response head
 	C4LeagueResponseHeadStart Head;
-	if (!CompileFromBuf_LogWarn<StdCompilerINIRead>(mkNamingAdapt(Head, "Response"), ResultString, "Start Reply"))
+	if (!CompileFromBuf_LogWarn<StdCompilerINIRead>(mkNamingAdapt(Head, "Response"), StdStrBuf::MakeRef(resultString.c_str()), "Start Reply"))
 		return false;
 	// Get message, league and seed
 	if (pMessage)
@@ -354,13 +354,13 @@ bool C4LeagueClient::Update(const C4Network2Reference &Ref)
 			false));
 	ModifyForChecksum(&QueryText, "-----");
 	// Perform query
-	return Query(QueryMode::POST, QueryText.getData(), false);
+	return Query(QueryText.getData(), false);
 }
 
 bool C4LeagueClient::GetUpdateReply(StdStrBuf *pMessage, C4ClientPlayerInfos *pPlayerLeagueInfos)
 {
 	C4LeagueResponseHeadUpdate Reply;
-	if (!CompileFromBuf_LogWarn<StdCompilerINIRead>(mkNamingAdapt(Reply, "Response"), ResultString, "Update Reply"))
+	if (!CompileFromBuf_LogWarn<StdCompilerINIRead>(mkNamingAdapt(Reply, "Response"), StdStrBuf::MakeRef(resultString.c_str()), "Update Reply"))
 		return false;
 	// Get message
 	if (pMessage)
@@ -386,20 +386,20 @@ bool C4LeagueClient::End(const C4Network2Reference &Ref, const char *szRecordNam
 			false));
 	ModifyForChecksum(&QueryText, "-----");
 	// Perform query
-	return Query(QueryMode::POST, QueryText.getData(), false);
+	return Query(QueryText.getData(), false);
 }
 
 bool C4LeagueClient::GetEndReply(StdStrBuf *pMessage, C4RoundResultsPlayers *pRoundResults)
 {
 	// Parse response head
 	C4LeagueResponseHead Head;
-	if (!CompileFromBuf_LogWarn<StdCompilerINIRead>(mkNamingAdapt(Head, "Response"), ResultString, "End Reply"))
+	if (!CompileFromBuf_LogWarn<StdCompilerINIRead>(mkNamingAdapt(Head, "Response"), StdStrBuf::MakeRef(resultString.c_str()), "End Reply"))
 		return false;
 	// Get message
 	if (pMessage)
 		pMessage->Copy(Head.getMessage());
 	if (pRoundResults)
-		CompileFromBuf_LogWarn<StdCompilerINIRead>(mkNamingAdapt(mkNamingAdapt(*pRoundResults, "PlayerInfos"), "Response"), ResultString, "Round Results");
+		CompileFromBuf_LogWarn<StdCompilerINIRead>(mkNamingAdapt(mkNamingAdapt(*pRoundResults, "PlayerInfos"), "Response"), StdStrBuf::MakeRef(resultString.c_str()), "Round Results");
 	// Done
 	return Head.isSuccess();
 }
@@ -423,13 +423,13 @@ bool C4LeagueClient::Auth(const C4PlayerInfo &PlrInfo, const char *szAccount, co
 			false));
 	ModifyForChecksum(&QueryText, "-----");
 	// Perform query
-	return Query(QueryMode::POST, QueryText.getData(), false);
+	return Query(QueryText.getData(), false);
 }
 
 bool C4LeagueClient::GetAuthReply(StdStrBuf *pMessage, StdStrBuf *pAUID, StdStrBuf *pAccount, bool *pRegister)
 {
 	C4LeagueResponseHead Head;
-	if (!CompileFromBuf_LogWarn<StdCompilerINIRead>(mkNamingAdapt(Head, "Response"), ResultString, "Auth Reply"))
+	if (!CompileFromBuf_LogWarn<StdCompilerINIRead>(mkNamingAdapt(Head, "Response"), StdStrBuf::MakeRef(resultString.c_str()), "Auth Reply"))
 		return false;
 	// Get message & account
 	if (pMessage)
@@ -469,14 +469,14 @@ bool C4LeagueClient::AuthCheck(const C4PlayerInfo &PlrInfo)
 			false));
 	ModifyForChecksum(&QueryText, "-----");
 	// Perform query
-	return Query(QueryMode::POST, QueryText.getData(), false);
+	return Query(QueryText.getData(), false);
 }
 
 bool C4LeagueClient::GetAuthCheckReply(StdStrBuf *pMessage, const char *szLeague, C4PlayerInfo *pPlrInfo)
 {
 	// Parse response head
 	C4LeagueResponseHeadAuthCheck Head;
-	if (!CompileFromBuf_LogWarn<StdCompilerINIRead>(mkNamingAdapt(Head, "Response"), ResultString, "Auth Check Reply"))
+	if (!CompileFromBuf_LogWarn<StdCompilerINIRead>(mkNamingAdapt(Head, "Response"), StdStrBuf::MakeRef(resultString.c_str()), "Auth Check Reply"))
 		return false;
 	// Get message and additional data
 	if (pMessage)
@@ -500,14 +500,14 @@ bool C4LeagueClient::ReportDisconnect(const C4ClientPlayerInfos &rFeedbackClient
 			false));
 	ModifyForChecksum(&QueryText, "-----");
 	// Perform query
-	return Query(QueryMode::POST, QueryText.getData(), false);
+	return Query(QueryText.getData(), false);
 }
 
 bool C4LeagueClient::GetReportDisconnectReply(StdStrBuf *pMessage)
 {
 	// Parse response head
 	C4LeagueResponseHead Head;
-	if (!CompileFromBuf_LogWarn<StdCompilerINIRead>(mkNamingAdapt(Head, "Response"), ResultString, "Report Disconnect"))
+	if (!CompileFromBuf_LogWarn<StdCompilerINIRead>(mkNamingAdapt(Head, "Response"), StdStrBuf::MakeRef(resultString.c_str()), "Report Disconnect"))
 		return false;
 	// Get message
 	if (pMessage)
