@@ -34,7 +34,6 @@
 #include <unordered_map>
 
 const int C4Network2HTTPQueryTimeout = 20; // (s)
-constexpr uint32_t C4Network2HTTPHappyEyeballsTimeout = 300; // (ms)
 
 // Session data
 class C4Network2Reference
