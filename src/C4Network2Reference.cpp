@@ -448,7 +448,10 @@ bool C4Network2HTTPClient::Query(const StdBuf &Data, bool binary, Headers header
 
 	for (const auto &[key, value] : headers)
 	{
-		headerList = curl_slist_append(headerList, FormatString("%s: %s", key.data(), value.data()).getData());
+		std::string header{key};
+		header += ": ";
+		header += value;
+		headerList = curl_slist_append(headerList, header.c_str());
 	}
 
 	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headerList);
