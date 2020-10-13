@@ -411,9 +411,6 @@ bool C4Network2HTTPClient::Query(const StdBuf &Data, bool binary, Headers header
 		return false;
 	}
 
-#ifdef _DEBUG
-	curl_easy_setopt(curl, CURLOPT_VERBOSE, 1);
-#endif
 	curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
 	curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "gzip");
 	curl_easy_setopt(curl, CURLOPT_USERAGENT, C4ENGINENAME "/" C4VERSION );
