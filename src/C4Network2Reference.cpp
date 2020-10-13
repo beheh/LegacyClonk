@@ -245,7 +245,8 @@ bool C4Network2HTTPClient::Init()
 	}
 
 #ifdef STDSCHEDULER_USE_EVENTS
-	if (event = WSACreateEvent(); event == WSA_INVALID_EVENT)
+	event = WSACreateEvent();
+	if (event == WSA_INVALID_EVENT)
 	{
 		SetError("Could not create socket event");
 		curl_multi_cleanup(multiHandle);
