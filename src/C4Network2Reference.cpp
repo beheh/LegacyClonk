@@ -281,8 +281,39 @@ bool C4Network2HTTPClient::Execute(int maxTime)
 		}
 	}
 #else
-	//TODO
-#error TODO
+	fd_set fds[2];
+
+	// build socket sets
+	int max{0};
+	FD_ZERO(&fds[0]); FD_ZERO(&fds[1]);
+	GetFDs(fds, &max);
+
+	// build timeout value
+	timeval to{maxTime / 1000, (maxTime % 1000) * 1000};
+
+	// wait for something to happen
+	int ret{select(max + 1, &fds[0], &fds[1], nullptr, (maxTime == C4NetIO::TO_INF ? nullptr : &to))};
+
+	// error
+	if (ret < 0)
+	{
+		SetError("select failed");
+		return false;
+	}
+
+	else if (ret > 0)
+	{
+		// copy map to prevent crashes
+		auto tmp = sockets;
+		for (const auto &[socket, what] : tmp)
+		{
+			int eventBitmask{0};
+			if (FD_ISSET(socket, &fds[0])) eventBitmask |= CURL_CSELECT_IN;
+			if (FD_ISSET(socket, &fds[1])) eventBitmask |= CURL_CSELECT_OUT;
+
+			curl_multi_socket_action(multiHandle, socket, eventBitmask, &running);
+		}
+	}
 #endif
 	else
 	{
@@ -332,6 +363,32 @@ int C4Network2HTTPClient::GetTimeout()
 	curl_multi_timeout(multiHandle, &timeout);
 	return timeout >= 0 ? timeout : 1000;
 }
+
+#ifndef STDSCHEDULER_USE_EVENTS
+void C4Network2HTTPClient::GetFDs(fd_set *FDs, int *maxFD)
+{
+	for (const auto &[socket, what] : sockets)
+	{
+		switch (what)
+		{
+		case CURL_POLL_IN:
+			FD_SET(socket, &FDs[0]); if (maxFD) *maxFD = std::max<SOCKET>(*maxFD, socket);
+			break;
+
+		case CURL_POLL_OUT:
+			FD_SET(socket, &FDs[1]); if (maxFD) *maxFD = std::max<SOCKET>(*maxFD, socket);
+			break;
+
+		case CURL_POLL_INOUT:
+			FD_SET(socket, &FDs[0]); FD_SET(socket, &FDs[1]); if (maxFD) *maxFD = std::max<SOCKET>(*maxFD, socket);
+			break;
+
+		default:
+			break;;
+		}
+	}
+}
+#endif
 
 bool C4Network2HTTPClient::Query(const StdBuf &Data, bool binary, Headers headers)
 {
