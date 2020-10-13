@@ -250,6 +250,7 @@ bool C4Network2HTTPClient::Init()
 	{
 		SetError("Could not create socket event");
 		curl_multi_cleanup(multiHandle);
+		multiHandle = nullptr;
 		return false;
 	}
 #endif
