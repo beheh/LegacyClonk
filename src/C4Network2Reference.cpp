@@ -431,9 +431,10 @@ bool C4Network2HTTPClient::Query(const StdBuf &Data, bool binary, Headers header
 
 	if (Data.getSize())
 	{
-		requestData = Data;
-		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, Data.getData());
-		curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, Data.getSize());
+		requestData.Copy(Data);
+		curl_easy_setopt(curl, CURLOPT_POST, 1);
+		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, requestData.getData());
+		curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, requestData.getSize());
 
 		if (!headers.count("Content-Type"))
 		{
