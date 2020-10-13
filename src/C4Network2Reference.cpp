@@ -418,6 +418,7 @@ bool C4Network2HTTPClient::Query(const StdBuf &Data, bool binary, Headers header
 	curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "gzip");
 	curl_easy_setopt(curl, CURLOPT_USERAGENT, C4ENGINENAME "/" C4VERSION );
 	curl_easy_setopt(curl, CURLOPT_TIMEOUT, C4Network2HTTPQueryTimeout);
+	curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1);
 
 	// Create request
 	const char *const charset{GetCharsetCodeName(Config.General.LanguageCharset)};
