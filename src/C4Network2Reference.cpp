@@ -425,8 +425,7 @@ bool C4Network2HTTPClient::Query(const StdBuf &Data, bool binary, Headers header
 
 	headers["Accept-Charset"] = charset;
 	headers["Accept-Language"] = Config.General.LanguageEx;
-
-	headers["User-Agent"] = C4ENGINENAME "/" C4VERSION;
+	headers.erase("User-Agent");
 
 	curl_slist *headerList{nullptr};
 
