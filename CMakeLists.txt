@@ -345,7 +345,8 @@ find_package(ZLIB REQUIRED)
 target_link_libraries(standard ZLIB::ZLIB)
 
 # Link curl
-find_package(CURL CONFIG REQUIRED)
+include(FindCURL)
+find_package(CURL REQUIRED)
 include_directories(SYSTEM ${CURL_INCLUDE_DIRS})
 target_link_libraries(clonk CURL::libcurl)
 
