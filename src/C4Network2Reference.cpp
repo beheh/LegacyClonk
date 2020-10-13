@@ -437,14 +437,8 @@ bool C4Network2HTTPClient::Query(const StdBuf &Data, bool binary, Headers header
 
 		if (!headers.count("Content-Type"))
 		{
-			const char defaultType[]{"text/plain; encoding="};
-			const size_t size{sizeof(defaultType) + strlen(charset)};
-
-			auto *buffer = reinterpret_cast<char *>(alloca(size));
-			strcpy(buffer, defaultType);
-			strcpy(buffer + sizeof(defaultType) - 1, charset);
-
-			headers["Content-Type"] = buffer; // alloca will live until the end of the stack
+			static constexpr auto defaultType = "text/plain; encoding=";
+			headerList = curl_slist_append(headerList, FormatString("Content-Type: %s%s", defaultType, charset).getData());
 		}
 
 		// Disable the Expect: 100-Continue header which curl automaticallY
