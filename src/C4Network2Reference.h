@@ -190,7 +190,7 @@ public:
 	const char *getURL() const { return url.c_str(); }
 	const char *getServerName() const { return serverName.c_str(); }
 	const C4NetIO::addr_t &getServerAddress() const { return serverAddress; }
-	virtual const char *GetError() const { return !error.empty() ? error.c_str() : nullptr; }
+	virtual const char *GetError() const { return !error.empty() && *error.c_str() ? error.c_str() : nullptr; }
 	void ResetError() { error.clear(); }
 
 	void Cancel(std::string_view reason);
